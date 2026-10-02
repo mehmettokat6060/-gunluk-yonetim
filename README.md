@@ -1,1 +1,1 @@
-# -gunluk-yonetim
+# gunluk-yonetim
