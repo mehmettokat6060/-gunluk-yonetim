@@ -24,7 +24,7 @@ textarea,input,select{width:100%;padding:11px;border:1px solid #d1d5db;border-ra
 nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #ddd;display:flex;justify-content:space-around;padding:7px 2px calc(7px + env(safe-area-inset-bottom));z-index:9}
 nav button{background:transparent;color:#6b7280;padding:6px 5px;font-size:11px}nav button.active{color:#111827}
 .fab{position:fixed;right:18px;bottom:78px;border-radius:50%;width:54px;height:54px;font-size:23px;z-index:8}
-.notice{border-left:4px solid #111827}.urgent{border-left:4px solid #b91c1c;background:#fff7f7}
+.notice{border-left:4px solid #111827;transition:opacity .4s}.urgent{border-left:4px solid #b91c1c;background:#fff7f7}
 .reminder-banner{position:sticky;top:0;z-index:7;background:#111827;color:#fff;border-radius:12px;padding:12px;margin-bottom:12px;display:none}
 pre{white-space:pre-wrap;background:#f3f4f6;padding:10px;border-radius:10px;font-size:13px}
 
@@ -89,7 +89,7 @@ const today=()=>{let d=new Date();return d.getFullYear()+'-'+String(d.getMonth()
 const save=()=>{localStorage.setItem(KEY,JSON.stringify(db));render()};
 const esc=s=>String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 document.getElementById('date').textContent=new Date().toLocaleDateString('tr-TR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-function show(id,btn){document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));if(btn)btn.classList.add('active');render()}
+function show(id,btn){let ar=document.getElementById('aiResult');if(ar)ar.innerHTML='';document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));if(btn)btn.classList.add('active');render()}
 function fill(s){document.getElementById('cmd').value=s}
 function addProgram(){let date=prompt('Tarih (YYYY-AA-GG):',today());if(!date)return;let time=prompt('Saat:','09:00');if(!time)return;let name=prompt('Misafir adı:');if(!name)return;let role=prompt('Görevi / kurumu:','');let subject=prompt('Konu:','');db.program.push({id:Date.now(),date,time,name,role,subject});save()}
 function addNote(){let text=prompt('Not:');if(text){db.notes.push({id:Date.now(),date:today(),text,done:false});save()}}
@@ -99,10 +99,27 @@ function del(type,id){db[type]=db[type].filter(x=>x.id!=id);save()}
 function toggle(type,id){let x=db[type].find(x=>x.id==id);if(x)x.done=!x.done;save()}
 function programHTML(a){return a.length?a.map(x=>`<div class=item><div class=time>${esc(x.time)}</div><div style="flex:1"><div class=title>${esc(x.name)}</div><div class=small>${esc(x.role)}${x.subject?' · '+esc(x.subject):''}</div></div><button class=light onclick="del('program',${x.id})">Sil</button></div>`).join(''):'<div class=empty>Kayıt yok.</div>'}
 function checkHTML(type,a,extra=''){return a.length?a.map(x=>`<div class=item><input class=check type=checkbox ${x.done?'checked':''} onclick="toggle('${type}',${x.id})"><div style="flex:1" class="${x.done?'done':''}"><div class=title>${esc(x.text||x.name)}</div><div class=small>${extra(x)}</div></div><button class=light onclick="del('${type}',${x.id})">Sil</button></div>`).join(''):'<div class=empty>Kayıt yok.</div>'}
+function weekdayDate(text){
+  const low=text.toLocaleLowerCase('tr-TR');
+  const days={pazartesi:1,salı:2,çarşamba:3,perşembe:4,cuma:5,cumartesi:6,pazar:0};
+  for(const name in days){
+    if(low.includes(name)){
+      const now=new Date(), target=days[name], cur=now.getDay();
+      let diff=(target-cur+7)%7;
+      // If the named day is today, keep today; otherwise use the next occurrence.
+      now.setDate(now.getDate()+diff);
+      return now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+    }
+  }
+  return null;
+}
 function aiProcess(){
 let s=document.getElementById('cmd').value.trim();if(!s)return;
 let low=s.toLocaleLowerCase('tr-TR'), result='', d=today(),date=d;
 if(low.includes('yarın')){let x=new Date();x.setDate(x.getDate()+1);date=x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0')}
+const namedDay=weekdayDate(s);
+if(namedDay) date=namedDay;
+
 if(/saat\s*\d{1,2}[:.]\d{2}/i.test(s)||low.includes('randevu')||low.includes('geliyor')||low.includes('ziyaret')){
 let tm=(s.match(/saat\s*(\d{1,2}[:.]\d{2})/i)||[])[1]||'09:00';tm=tm.replace('.',':');
 let name=(s.match(/saat\s*\d{1,2}[:.]\d{2}\s*(?:['’]?(?:da|de))?\s+([^,.]+?)(?:\s+geliyor|\s+gelecek|,|\.|$)/i)||[])[1]||'Yeni randevu';
@@ -111,6 +128,10 @@ db.program.push({id:Date.now(),date,time:tm,name:name.trim(),role:'',subject:sub
 let remind=/yarım saat|30 dakika|30 dk/i.test(s);
 if(remind){let [h,m]=tm.split(':').map(Number);let mins=h*60+m-30;let rt=String(Math.floor((mins+1440)%1440/60)).padStart(2,'0')+':'+String((mins+1440)%1440%60).padStart(2,'0');db.reminders.push({id:Date.now()+1,date,time:rt,text:name.trim()+' randevusu',done:false,alerted:false})}
 result='📅 Randevu olarak kaydettim'+(remind?' ve 30 dakika öncesine hatırlatma ekledim.':'.');
+}else if(namedDay && (low.includes('not')||low.includes('programa')||low.includes('ekle')||low.includes('pazartesi')||low.includes('salı')||low.includes('çarşamba')||low.includes('perşembe')||low.includes('cuma')||low.includes('cumartesi')||low.includes('pazar'))){
+db.program.push({id:Date.now(),date,time:'—',name:'Günlük Not',role:'',subject:s});
+db.notes.push({id:Date.now()+1,date,text:s,done:false});
+result='📅 '+new Date(date+'T12:00:00').toLocaleDateString('tr-TR',{weekday:'long',day:'numeric',month:'long'})+' programına not olarak ekledim.';
 }else if(low.includes('unutma')||low.includes('hatırlat')||low.includes('ara ')||low.includes('hatırla')){
 db.reminders.push({id:Date.now(),date,time:'09:00',text:s.replace(/yarın|bugün|cuma günü/gi,'').trim(),done:false,alerted:false});result='🔔 Hatırlatma olarak kaydettim. Saati Hatırlatmalar bölümünden değiştirebilirsiniz.';
 }else if(low.includes('talimat')||low.includes('kontrol et')||low.includes('hazırla')||low.includes('sorumlu')){
@@ -118,7 +139,7 @@ db.tasks.push({id:Date.now(),text:s,owner:'',due:date,done:false});result='📌 
 }else{
 db.notes.push({id:Date.now(),date,text:s,done:false});result='📝 Günlük not olarak kaydettim.';
 }
-document.getElementById('aiResult').innerHTML='<div class="card notice"><b>'+result+'</b><div class="small" style="margin-top:5px">Ücretsiz yerel sürüm: kayıtlar telefonunuzda saklanır.</div></div>';
+document.getElementById('aiResult').innerHTML='<div class="card notice" id="tempAiResult"><b>'+result+'</b><div class="small" style="margin-top:5px">Ücretsiz yerel sürüm: kayıtlar telefonunuzda saklanır.</div></div>'; setTimeout(()=>{let e=document.getElementById('tempAiResult');if(e){e.style.opacity='0';e.style.transition='opacity .4s';setTimeout(()=>{if(e)e.remove()},450)}},4500);
 document.getElementById('cmd').value='';save()
 }
 function quickAdd(){let c=prompt('1 Program / 2 Not / 3 Hatırlatma / 4 Talimat','1');if(c=='1')addProgram();else if(c=='2')addNote();else if(c=='3')addReminder();else if(c=='4')addTask()}
@@ -145,7 +166,7 @@ save();
 let upcoming=db.reminders.filter(x=>x.date===ds&&!x.done).sort((a,b)=>a.time.localeCompare(b.time));
 let banner=document.getElementById('reminderBanner');
 if(upcoming.length){
-let next=upcoming[0];banner.style.display='block';banner.innerHTML='🔔 <b>Bugünün sıradaki hatırlatması:</b> '+esc(next.time)+' — '+esc(next.text)+'<br><button style="margin-top:7px;background:#fff;color:#111827" onclick="enableNotifications()">Bildirimleri Aç</button>';
+let next=upcoming[0];banner.style.display='block';banner.innerHTML='🔔 <b>Bugünün sıradaki hatırlatması:</b> '+esc(next.time)+' — '+esc(next.text)+'<br><button style="margin-top:7px;background:#fff;color:#111827" onclick="enableNotifications()">Bildirimleri Aç</button> <button style="margin-top:7px;background:#374151;color:#fff" onclick="show(\'reminders\')">Hatırlatmayı Gör</button>';
 }else banner.style.display='none';
 }
 function render(){
