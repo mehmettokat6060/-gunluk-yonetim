@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<title>Günlük Yönetim</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f3f4f6;color:#111827}
+header{background:#111827;color:white;padding:22px 18px 18px;position:sticky;top:0;z-index:5}
+h1{margin:0;font-size:24px}.date{opacity:.75;margin-top:5px;font-size:14px}
+main{padding:16px;max-width:760px;margin:auto}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.card{background:white;border-radius:16px;padding:15px;box-shadow:0 2px 10px #0000000d;margin-bottom:12px}
+.stat{font-size:25px;font-weight:700}.muted{color:#6b7280;font-size:13px}.section{display:flex;justify-content:space-between;align-items:center;margin:18px 2px 9px}
+button{border:0;border-radius:11px;padding:10px 13px;background:#111827;color:white;font-weight:600}button.secondary{background:#e5e7eb;color:#111827}
+input,textarea,select{width:100%;padding:11px;border:1px solid #d1d5db;border-radius:10px;margin:5px 0 9px;font:inherit}
+.item{display:flex;gap:11px;align-items:flex-start;border-top:1px solid #eee;padding:12px 0}.item:first-child{border-top:0}
+.time{font-weight:700;min-width:48px}.title{font-weight:650}.small{font-size:13px;color:#6b7280;margin-top:3px}
+.check{width:21px;height:21px;margin-top:2px}.done{text-decoration:line-through;opacity:.55}
+nav{position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid #ddd;display:flex;justify-content:space-around;padding:8px 4px calc(8px + env(safe-area-inset-bottom));z-index:10}
+nav button{background:transparent;color:#4b5563;padding:7px;font-size:12px}nav button.active{color:#111827;font-weight:800}
+.page{display:none}.page.active{display:block}.fab{position:fixed;right:18px;bottom:78px;border-radius:50%;width:55px;height:55px;font-size:25px}
+@media(min-width:700px){nav{position:static;margin-top:20px;border:0;border-radius:14px}.fab{display:none}}
+</style>
+</head>
+<body>
+<header><h1>Günlük Yönetim</h1><div class="date" id="today"></div></header>
+<main>
+<section id="home" class="page active">
+<div class="grid">
+<div class="card"><div class="muted">Bugünkü Program</div><div class="stat" id="programCount">0</div></div>
+<div class="card"><div class="muted">Açık İş</div><div class="stat" id="taskCount">0</div></div>
+</div>
+<div class="section"><h2>Bugünün Programı</h2><button onclick="showPage('program')">Tümü</button></div>
+<div class="card" id="todayPrograms"></div>
+<div class="section"><h2>Hatırlatmalar</h2><button onclick="showPage('reminders')">Tümü</button></div>
+<div class="card" id="todayReminders"></div>
+<div class="section"><h2>Günlük Notlar</h2></div>
+<div class="card" id="todayNotes"></div>
+</section>
+
+<section id="program" class="page">
+<div class="section"><h2>Program</h2><button onclick="addProgram()">+ Ekle</button></div>
+<div class="card" id="programList"></div>
+</section>
+
+<section id="notes" class="page">
+<div class="section"><h2>Notlar</h2><button onclick="addNote()">+ Ekle</button></div>
+<div class="card" id="noteList"></div>
+</section>
+
+<section id="reminders" class="page">
+<div class="section"><h2>Hatırlatmalar</h2><button onclick="addReminder()">+ Ekle</button></div>
+<div class="card" id="reminderList"></div>
+</section>
+
+<section id="tasks" class="page">
+<div class="section"><h2>Talimatlar / İşler</h2><button onclick="addTask()">+ Ekle</button></div>
+<div class="card" id="taskList"></div>
+</section>
+</main>
+<button class="fab" onclick="quickAdd()">+</button>
+<nav>
+<button class="active" onclick="showPage('home',this)">🏠<br>Bugün</button>
+<button onclick="showPage('program',this)">📅<br>Program</button>
+<button onclick="showPage('notes',this)">📝<br>Notlar</button>
+<button onclick="showPage('reminders',this)">🔔<br>Hatırlatma</button>
+<button onclick="showPage('tasks',this)">📌<br>Talimat</button>
+</nav>
+<script>
+const key='gunlukYonetim_v1';
+let db=JSON.parse(localStorage.getItem(key)||'{"program":[],"notes":[],"reminders":[],"tasks":[]}');
+const save=()=>{localStorage.setItem(key,JSON.stringify(db));render()};
+const esc=s=>String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const today=()=>new Date().toISOString().slice(0,10);
+document.getElementById('today').textContent=new Date().toLocaleDateString('tr-TR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+function showPage(id,btn){document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));if(btn)btn.classList.add('active');else document.querySelector('nav button').classList.add('active');render()}
+function addProgram(){let date=prompt('Tarih (YYYY-AA-GG):',today());if(!date)return;let time=prompt('Saat:', '09:00');if(!time)return;let name=prompt('Misafir adı:');if(!name)return;let role=prompt('Görevi / kurumu:','');let subject=prompt('Konu:','');db.program.push({id:Date.now(),date,time,name,role,subject});db.program.sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));save()}
+function addNote(){let text=prompt('Not:');if(text){db.notes.push({id:Date.now(),date:today(),text,done:false});save()}}
+function addReminder(){let date=prompt('Tarih (YYYY-AA-GG):',today());if(!date)return;let time=prompt('Saat:','10:00');if(!time)return;let text=prompt('Hatırlatma:');if(text){db.reminders.push({id:Date.now(),date,time,text,done:false});db.reminders.sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));save()}}
+function addTask(){let text=prompt('Yapılacak iş / talimat:');if(!text)return;let owner=prompt('Sorumlu:','');let due=prompt('Son tarih (YYYY-AA-GG):','');db.tasks.push({id:Date.now(),text,owner,due,done:false});save()}
+function del(type,id){db[type]=db[type].filter(x=>x.id!=id);save()}
+function toggle(type,id){let x=db[type].find(x=>x.id==id);if(x)x.done=!x.done;save()}
+function programHTML(arr){return arr.length?arr.map(x=>`<div class="item"><div class="time">${esc(x.time)}</div><div><div class="title">${esc(x.name)}</div><div class="small">${esc(x.role)}${x.subject?' · '+esc(x.subject):''}</div></div><button class="secondary" onclick="del('program',${x.id})">Sil</button></div>`).join(''):'<div class="muted">Kayıt yok.</div>'}
+function remindersHTML(arr){return arr.length?arr.map(x=>`<div class="item"><input class="check" type="checkbox" ${x.done?'checked':''} onclick="toggle('reminders',${x.id})"><div class="${x.done?'done':''}"><div class="title">${esc(x.time)} — ${esc(x.text)}</div><div class="small">${esc(x.date)}</div></div><button class="secondary" onclick="del('reminders',${x.id})">Sil</button></div>`).join(''):'<div class="muted">Kayıt yok.</div>'}
+function notesHTML(arr){return arr.length?arr.map(x=>`<div class="item"><input class="check" type="checkbox" ${x.done?'checked':''} onclick="toggle('notes',${x.id})"><div class="${x.done?'done':''}">${esc(x.text)}</div><button class="secondary" onclick="del('notes',${x.id})">Sil</button></div>`).join(''):'<div class="muted">Not yok.</div>'}
+function tasksHTML(arr){return arr.length?arr.map(x=>`<div class="item"><input class="check" type="checkbox" ${x.done?'checked':''} onclick="toggle('tasks',${x.id})"><div class="${x.done?'done':''}"><div class="title">${esc(x.text)}</div><div class="small">Sorumlu: ${esc(x.owner||'-')} · Son tarih: ${esc(x.due||'-')}</div></div><button class="secondary" onclick="del('tasks',${x.id})">Sil</button></div>`).join(''):'<div class="muted">Açık iş yok.</div>'}
+function render(){
+let d=today();let p=db.program.filter(x=>x.date==d),r=db.reminders.filter(x=>x.date==d),n=db.notes.filter(x=>x.date==d);
+document.getElementById('programCount').textContent=p.length;document.getElementById('taskCount').textContent=db.tasks.filter(x=>!x.done).length;
+document.getElementById('todayPrograms').innerHTML=programHTML(p);document.getElementById('todayReminders').innerHTML=remindersHTML(r);document.getElementById('todayNotes').innerHTML=notesHTML(n);
+document.getElementById('programList').innerHTML=programHTML(db.program);document.getElementById('noteList').innerHTML=notesHTML(db.notes);document.getElementById('reminderList').innerHTML=remindersHTML(db.reminders);document.getElementById('taskList').innerHTML=tasksHTML(db.tasks);
+}
+function quickAdd(){let c=prompt('Ne eklemek istiyorsunuz? 1=Program 2=Not 3=Hatırlatma 4=Talimat','1');if(c=='1')addProgram();else if(c=='2')addNote();else if(c=='3')addReminder();else if(c=='4')addTask()}
+render();
+</script>
+</body>
+</html>
