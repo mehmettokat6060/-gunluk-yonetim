@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#111827">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Genel Sekreterlik AI</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f4f5f7;color:#111827;padding-bottom:78px}
@@ -22,13 +24,15 @@ textarea,input,select{width:100%;padding:11px;border:1px solid #d1d5db;border-ra
 nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #ddd;display:flex;justify-content:space-around;padding:7px 2px calc(7px + env(safe-area-inset-bottom));z-index:9}
 nav button{background:transparent;color:#6b7280;padding:6px 5px;font-size:11px}nav button.active{color:#111827}
 .fab{position:fixed;right:18px;bottom:78px;border-radius:50%;width:54px;height:54px;font-size:23px;z-index:8}
+.notice{border-left:4px solid #111827}.urgent{border-left:4px solid #b91c1c;background:#fff7f7}
+.reminder-banner{position:sticky;top:0;z-index:7;background:#111827;color:#fff;border-radius:12px;padding:12px;margin-bottom:12px;display:none}
 pre{white-space:pre-wrap;background:#f3f4f6;padding:10px;border-radius:10px;font-size:13px}
 </style>
 </head>
 <body>
 <header><div class="brand">Genel Sekreterlik AI</div><div class="date" id="date"></div></header>
 <main>
-
+<div id="reminderBanner" class="reminder-banner"></div>
 <section id="home" class="page active">
 <div class="ai">
 <h2>🤖 AI Asistan</h2>
@@ -49,7 +53,6 @@ pre{white-space:pre-wrap;background:#f3f4f6;padding:10px;border-radius:10px;font
 <div class="section"><h2>Açık Talimatlar</h2><button class="light" onclick="show('tasks')">Tümü</button></div>
 <div class="card" id="homeTasks"></div>
 </section>
-
 <section id="program" class="page"><div class="section"><h2>📅 Program</h2><button onclick="addProgram()">+ Ekle</button></div><div class="card" id="programList"></div></section>
 <section id="notes" class="page"><div class="section"><h2>📝 Notlar</h2><button onclick="addNote()">+ Ekle</button></div><div class="card" id="noteList"></div></section>
 <section id="reminders" class="page"><div class="section"><h2>🔔 Hatırlatmalar</h2><button onclick="addReminder()">+ Ekle</button></div><div class="card" id="reminderList"></div></section>
@@ -63,11 +66,11 @@ pre{white-space:pre-wrap;background:#f3f4f6;padding:10px;border-radius:10px;font
 <button onclick="show('reminders',this)">🔔<br>Hatırlatma</button>
 <button onclick="show('tasks',this)">📌<br>Talimat</button>
 </nav>
-
 <script>
-const KEY='genelSekreterlikAI_v2';
-let db=JSON.parse(localStorage.getItem(KEY)||'{"program":[],"notes":[],"reminders":[],"tasks":[]}');
-const today=()=>new Date().toISOString().slice(0,10);
+const KEY='genelSekreterlikAI_v3';
+let db=JSON.parse(localStorage.getItem(KEY)||localStorage.getItem('genelSekreterlikAI_v2')||'{"program":[],"notes":[],"reminders":[],"tasks":[]}');
+if(!db.reminders)db.reminders=[];
+const today=()=>{let d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const save=()=>{localStorage.setItem(KEY,JSON.stringify(db));render()};
 const esc=s=>String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 document.getElementById('date').textContent=new Date().toLocaleDateString('tr-TR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
@@ -75,7 +78,7 @@ function show(id,btn){document.querySelectorAll('.page').forEach(x=>x.classList.
 function fill(s){document.getElementById('cmd').value=s}
 function addProgram(){let date=prompt('Tarih (YYYY-AA-GG):',today());if(!date)return;let time=prompt('Saat:','09:00');if(!time)return;let name=prompt('Misafir adı:');if(!name)return;let role=prompt('Görevi / kurumu:','');let subject=prompt('Konu:','');db.program.push({id:Date.now(),date,time,name,role,subject});save()}
 function addNote(){let text=prompt('Not:');if(text){db.notes.push({id:Date.now(),date:today(),text,done:false});save()}}
-function addReminder(){let date=prompt('Tarih (YYYY-AA-GG):',today());if(!date)return;let time=prompt('Saat:','10:00');if(!time)return;let text=prompt('Hatırlatma:');if(text){db.reminders.push({id:Date.now(),date,time,text,done:false});save()}}
+function addReminder(){let date=prompt('Tarih (YYYY-AA-GG):',today());if(!date)return;let time=prompt('Saat:','10:00');if(!time)return;let text=prompt('Hatırlatma:');if(text){db.reminders.push({id:Date.now(),date,time,text,done:false,alerted:false});save()}}
 function addTask(){let text=prompt('Talimat / iş:');if(!text)return;let owner=prompt('Sorumlu:','');let due=prompt('Son tarih (YYYY-AA-GG):','');db.tasks.push({id:Date.now(),text,owner,due,done:false});save()}
 function del(type,id){db[type]=db[type].filter(x=>x.id!=id);save()}
 function toggle(type,id){let x=db[type].find(x=>x.id==id);if(x)x.done=!x.done;save()}
@@ -83,36 +86,59 @@ function programHTML(a){return a.length?a.map(x=>`<div class=item><div class=tim
 function checkHTML(type,a,extra=''){return a.length?a.map(x=>`<div class=item><input class=check type=checkbox ${x.done?'checked':''} onclick="toggle('${type}',${x.id})"><div style="flex:1" class="${x.done?'done':''}"><div class=title>${esc(x.text||x.name)}</div><div class=small>${extra(x)}</div></div><button class=light onclick="del('${type}',${x.id})">Sil</button></div>`).join(''):'<div class=empty>Kayıt yok.</div>'}
 function aiProcess(){
 let s=document.getElementById('cmd').value.trim();if(!s)return;
-let low=s.toLocaleLowerCase('tr-TR'), result='', d=today();
-let date=d;if(low.includes('yarın')){let x=new Date();x.setDate(x.getDate()+1);date=x.toISOString().slice(0,10)}
+let low=s.toLocaleLowerCase('tr-TR'), result='', d=today(),date=d;
+if(low.includes('yarın')){let x=new Date();x.setDate(x.getDate()+1);date=x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0')}
 if(/saat\s*\d{1,2}[:.]\d{2}/i.test(s)||low.includes('randevu')||low.includes('geliyor')||low.includes('ziyaret')){
- let tm=(s.match(/saat\s*(\d{1,2}[:.]\d{2})/i)||[])[1]||'09:00';tm=tm.replace('.',':');
- let name=(s.match(/saat\s*\d{1,2}[:.]\d{2}\s*(?:da|de)?\s*([^,.]+?)(?:\s+geliyor|\s+gelecek|,|\.|$)/i)||[])[1]||'Yeni randevu';
- let subject=(s.match(/(?:görüşeceğiz|konusu|için)\s+([^.!?]+)/i)||[])[1]||'';
- db.program.push({id:Date.now(),date,time:tm,name:name.trim(),role:'',subject:subject.trim()});
- let remind=/yarım saat|30 dakika|30 dk/i.test(s); if(remind){let [h,m]=tm.split(':').map(Number);let mins=h*60+m-30;let rt=String(Math.floor((mins+1440)%1440/60)).padStart(2,'0')+':'+String((mins+1440)%1440%60).padStart(2,'0');db.reminders.push({id:Date.now()+1,date,time:rt,text:name.trim()+' randevusu',done:false})}
- result='📅 Randevu olarak kaydettim'+(remind?' ve 30 dakika öncesine hatırlatma ekledim.':'.');
+let tm=(s.match(/saat\s*(\d{1,2}[:.]\d{2})/i)||[])[1]||'09:00';tm=tm.replace('.',':');
+let name=(s.match(/saat\s*\d{1,2}[:.]\d{2}\s*(?:da|de)?\s*([^,.]+?)(?:\s+geliyor|\s+gelecek|,|\.|$)/i)||[])[1]||'Yeni randevu';
+let subject=(s.match(/(?:görüşeceğiz|konusu|için)\s+([^.!?]+)/i)||[])[1]||'';
+db.program.push({id:Date.now(),date,time:tm,name:name.trim(),role:'',subject:subject.trim()});
+let remind=/yarım saat|30 dakika|30 dk/i.test(s);
+if(remind){let [h,m]=tm.split(':').map(Number);let mins=h*60+m-30;let rt=String(Math.floor((mins+1440)%1440/60)).padStart(2,'0')+':'+String((mins+1440)%1440%60).padStart(2,'0');db.reminders.push({id:Date.now()+1,date,time:rt,text:name.trim()+' randevusu',done:false,alerted:false})}
+result='📅 Randevu olarak kaydettim'+(remind?' ve 30 dakika öncesine hatırlatma ekledim.':'.');
 }else if(low.includes('unutma')||low.includes('hatırlat')||low.includes('ara ')||low.includes('hatırla')){
- db.reminders.push({id:Date.now(),date,time:'09:00',text:s.replace(/yarın|bugün|cuma günü/gi,'').trim(),done:false});result='🔔 Hatırlatma olarak kaydettim. Saati daha sonra Hatırlatmalar bölümünden değiştirebilirsiniz.';
+db.reminders.push({id:Date.now(),date,time:'09:00',text:s.replace(/yarın|bugün|cuma günü/gi,'').trim(),done:false,alerted:false});result='🔔 Hatırlatma olarak kaydettim. Saati Hatırlatmalar bölümünden değiştirebilirsiniz.';
 }else if(low.includes('talimat')||low.includes('kontrol et')||low.includes('hazırla')||low.includes('sorumlu')){
- db.tasks.push({id:Date.now(),text:s,owner:'',due:date,done:false});result='📌 Talimat / iş olarak kaydettim.';
+db.tasks.push({id:Date.now(),text:s,owner:'',due:date,done:false});result='📌 Talimat / iş olarak kaydettim.';
 }else{
- db.notes.push({id:Date.now(),date,text:s,done:false});result='📝 Günlük not olarak kaydettim.';
+db.notes.push({id:Date.now(),date,text:s,done:false});result='📝 Günlük not olarak kaydettim.';
 }
-document.getElementById('aiResult').innerHTML='<div class="card"><b>'+result+'</b><div class="small" style="margin-top:5px">Not: Bu sürüm yerel kural tabanlı AI prototipidir. Gerçek bulut yapay zekâ bağlantısı sonraki aşamada güvenli sunucu üzerinden eklenecektir.</div></div>';
+document.getElementById('aiResult').innerHTML='<div class="card notice"><b>'+result+'</b><div class="small" style="margin-top:5px">Ücretsiz yerel sürüm: kayıtlar telefonunuzda saklanır.</div></div>';
 document.getElementById('cmd').value='';save()
 }
 function quickAdd(){let c=prompt('1 Program / 2 Not / 3 Hatırlatma / 4 Talimat','1');if(c=='1')addProgram();else if(c=='2')addNote();else if(c=='3')addReminder();else if(c=='4')addTask()}
+function notifyUser(title,text){
+try{if('Notification' in window && Notification.permission==='granted')new Notification(title,{body:text});else alert('🔔 '+title+'\\n\\n'+text)}catch(e){alert('🔔 '+title+'\\n\\n'+text)}
+}
+async function enableNotifications(){
+if(!('Notification' in window)){alert('Bu tarayıcıda bildirim desteği bulunmuyor. Uygulama açıkken zamanında uyarı göstereceğim.');return}
+if(Notification.permission==='default')await Notification.requestPermission();
+if(Notification.permission==='granted')alert('Bildirim izni verildi. Uygulama açıkken hatırlatmalar zamanı geldiğinde bildirim olarak gösterilir.');
+else alert('Bildirim izni verilmedi. Uygulama açıkken ekranda uyarı göstereceğim.');
+}
+function checkReminders(){
+let now=new Date(), ds=today(), hm=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+let due=db.reminders.filter(x=>x.date===ds && x.time===hm && !x.done && !x.alerted);
+if(due.length){
+due.forEach(x=>{x.alerted=true;notifyUser('Genel Sekreterlik Hatırlatması',x.text)});
+save();
+}
+let upcoming=db.reminders.filter(x=>x.date===ds&&!x.done).sort((a,b)=>a.time.localeCompare(b.time));
+let banner=document.getElementById('reminderBanner');
+if(upcoming.length){
+let next=upcoming[0];banner.style.display='block';banner.innerHTML='🔔 <b>Bugünün sıradaki hatırlatması:</b> '+esc(next.time)+' — '+esc(next.text)+'<br><button style="margin-top:7px;background:#fff;color:#111827" onclick="enableNotifications()">Bildirimleri Aç</button>';
+}else banner.style.display='none';
+}
 function render(){
-let d=today();let p=db.program.filter(x=>x.date==d).sort((a,b)=>a.time.localeCompare(b.time)),r=db.reminders.filter(x=>x.date==d),t=db.tasks.filter(x=>!x.done);
+let d=today(),p=db.program.filter(x=>x.date==d).sort((a,b)=>a.time.localeCompare(b.time)),r=db.reminders.filter(x=>x.date==d),t=db.tasks.filter(x=>!x.done);
 document.getElementById('homeProgram').innerHTML=programHTML(p);
 document.getElementById('homeReminders').innerHTML=checkHTML('reminders',r,x=>x.time+' · '+x.date);
 document.getElementById('homeTasks').innerHTML=checkHTML('tasks',t,x=>'Sorumlu: '+(x.owner||'-')+' · Son tarih: '+(x.due||'-'));
-document.getElementById('programList').innerHTML=programHTML(db.program.sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)));
+document.getElementById('programList').innerHTML=programHTML(db.program.slice().sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)));
 document.getElementById('noteList').innerHTML=checkHTML('notes',db.notes,x=>x.date);
-document.getElementById('reminderList').innerHTML=checkHTML('reminders',db.reminders,x=>x.time+' · '+x.date);
+document.getElementById('reminderList').innerHTML=checkHTML('reminders',db.reminders.slice().sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)),x=>x.time+' · '+x.date);
 document.getElementById('taskList').innerHTML=checkHTML('tasks',db.tasks,x=>'Sorumlu: '+(x.owner||'-')+' · Son tarih: '+(x.due||'-'));
 }
-render();
+render();checkReminders();setInterval(checkReminders,30000);
 </script>
 </body></html>
