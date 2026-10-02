@@ -32,7 +32,7 @@ pre{white-space:pre-wrap;background:#f3f4f6;padding:10px;border-radius:10px;font
   body{background:#fff;color:#000;padding:0}
   header{background:#fff;color:#000;border-bottom:2px solid #111;padding:10px 0}
   main{max-width:none;padding:0}
-  nav,.fab,.ai,.section button,#home,.page:not(#program),#reminderBanner{display:none!important}
+  nav,.fab,.ai,.section button,#home,.page:not(#program),#reminderBanner,#calendarBar{display:none!important}
   #program{display:block!important}
   #program .section{display:block;margin:15px 0}
   #program .section button{display:none!important}
@@ -42,11 +42,31 @@ pre{white-space:pre-wrap;background:#f3f4f6;padding:10px;border-radius:10px;font
   .print-title{display:block!important}
 }
 .print-title{display:none}
+
+.print-month-title{display:none}
+@media print{
+  .print-month-title{display:block}
+  body.month-print .print-title{display:none!important}
+  body.month-print .print-month-title{display:block!important}
+  body.month-print #programList{box-shadow:none}
+  body.month-print #programList .month-day{break-inside:avoid;border-bottom:1px solid #ddd;padding:10px 0}
+  body.month-print #programList .item{padding:7px 0}
+}
 </style>
 </head>
 <body>
 <header><div class="brand">Genel Sekreterlik AI</div><div class="date" id="date"></div></header>
 <main>
+<div class="card calendar-bar" id="calendarBar">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+    <div>
+      <div style="font-weight:800;font-size:16px">📅 Program Tarihi</div>
+      <div class="small">Tarihi değiştirince program, not ve hatırlatmalar o güne göre gösterilir.</div>
+    </div>
+    <input id="globalDate" type="date" style="width:auto;margin:0" onchange="setGlobalDate(this.value)">
+  </div>
+</div>
+
 <div id="reminderBanner" class="reminder-banner"></div>
 <section id="home" class="page active">
 <div class="ai">
@@ -68,7 +88,7 @@ pre{white-space:pre-wrap;background:#f3f4f6;padding:10px;border-radius:10px;font
 <div class="section"><h2>Açık Talimatlar</h2><button class="light" onclick="show('tasks')">Tümü</button></div>
 <div class="card" id="homeTasks"></div>
 </section>
-<section id="program" class="page"><div class="print-title"><h1>GÜNLÜK PROGRAM</h1><div id="printDate"></div></div><div class="section"><h2>📅 Program</h2><div><button class="light" onclick="printDailyProgram()">🖨️ Çıktı</button> <button onclick="addProgram()">+ Ekle</button></div></div><div class="card" id="programList"></div></section>
+<section id="program" class="page"><div class="print-title"><h1>GÜNLÜK PROGRAM</h1><div id="printDate"></div></div><div class="print-month-title"><h1>AYLIK PROGRAM</h1><div id="printMonth"></div></div><div class="section"><h2>📅 Program</h2><div><button class="light" onclick="printDailyProgram()">🖨️ Günlük</button> <button class="light" onclick="printMonthlyProgram()">🗓️ Aylık</button> <button onclick="addProgram()">+ Ekle</button></div></div><div class="card" id="programList"></div></section>
 <section id="notes" class="page"><div class="section"><h2>📝 Notlar</h2><button onclick="addNote()">+ Ekle</button></div><div class="card" id="noteList"></div></section>
 <section id="reminders" class="page"><div class="section"><h2>🔔 Hatırlatmalar</h2><button onclick="addReminder()">+ Ekle</button></div><div class="card" id="reminderList"></div></section>
 <section id="tasks" class="page"><div class="section"><h2>📌 Talimatlar</h2><button onclick="addTask()">+ Ekle</button></div><div class="card" id="taskList"></div></section>
@@ -122,7 +142,8 @@ if(namedDay) date=namedDay;
 
 if(/saat\s*\d{1,2}[:.]\d{2}/i.test(s)||low.includes('randevu')||low.includes('geliyor')||low.includes('ziyaret')){
 let tm=(s.match(/saat\s*(\d{1,2}[:.]\d{2})/i)||[])[1]||'09:00';tm=tm.replace('.',':');
-let name=(s.match(/saat\s*\d{1,2}[:.]\d{2}\s*(?:['’]?(?:da|de))?\s+([^,.]+?)(?:\s+geliyor|\s+gelecek|,|\.|$)/i)||[])[1]||'Yeni randevu';
+let name=(s.match(/saat\s*\d{1,2}[:.]\d{2}\s*(?:['’]?(?:da|de))?\s*(?:geliyor\s+)?([^,.]+?)(?=\s+geliyor|\s+gelecek|,|\.|$)/i)||[])[1]||'Yeni randevu';
+name=name.replace(/^['’]?(?:da|de)\s+/i,'').trim();
 let subject=(s.match(/(?:görüşeceğiz|konusu|için)\s+([^.!?]+)/i)||[])[1]||'';
 db.program.push({id:Date.now(),date,time:tm,name:name.trim(),role:'',subject:subject.trim()});
 let remind=/yarım saat|30 dakika|30 dk/i.test(s);
@@ -153,9 +174,24 @@ if(Notification.permission==='granted')alert('Bildirim izni verildi. Uygulama a�
 else alert('Bildirim izni verilmedi. Uygulama açıkken ekranda uyarı göstereceğim.');
 }
 function printDailyProgram(){
-  document.getElementById('printDate').textContent=new Date().toLocaleDateString('tr-TR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  document.body.classList.remove('month-print');
+  const d=selectedProgramDate||today();
+  document.getElementById('printDate').textContent=new Date(d+'T12:00:00').toLocaleDateString('tr-TR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const list=document.getElementById('programList');
+  list.innerHTML=programHTML(db.program.filter(x=>x.date===d).sort((a,b)=>(a.time||'99:99').localeCompare(b.time||'99:99')));
   window.print();
+  setTimeout(()=>render(),300);
 }
+function printMonthlyProgram(){
+  document.body.classList.add('month-print');
+  const key=monthKey(selectedProgramDate||today());
+  document.getElementById('printMonth').textContent=monthName(key);
+  const list=document.getElementById('programList');
+  list.innerHTML=monthlyProgramHTML(key);
+  window.print();
+  setTimeout(()=>{document.body.classList.remove('month-print');render()},300);
+}
+
 function checkReminders(){
 let now=new Date(), ds=today(), hm=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
 let due=db.reminders.filter(x=>x.date===ds && x.time===hm && !x.done && !x.alerted);
@@ -169,16 +205,38 @@ if(upcoming.length){
 let next=upcoming[0];banner.style.display='block';banner.innerHTML='🔔 <b>Bugünün sıradaki hatırlatması:</b> '+esc(next.time)+' — '+esc(next.text)+'<br><button style="margin-top:7px;background:#fff;color:#111827" onclick="enableNotifications()">Bildirimleri Aç</button> <button style="margin-top:7px;background:#374151;color:#fff" onclick="show(\'reminders\')">Hatırlatmayı Gör</button>';
 }else banner.style.display='none';
 }
+let selectedProgramDate=today();
+function setGlobalDate(v){
+  selectedProgramDate=v||today();
+  const g=document.getElementById('globalDate'); if(g) g.value=selectedProgramDate;
+  render();
+}
+function monthKey(date){return date.slice(0,7)}
+function monthName(key){
+  const [y,m]=key.split('-');
+  return new Date(Number(y),Number(m)-1,1).toLocaleDateString('tr-TR',{month:'long',year:'numeric'});
+}
+function monthlyProgramHTML(key){
+  const arr=db.program.filter(x=>x.date && x.date.startsWith(key)).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+  if(!arr.length)return '<div class="empty">Bu ay için program kaydı yok.</div>';
+  const groups={};
+  arr.forEach(x=>(groups[x.date]??=[]).push(x));
+  return Object.keys(groups).sort().map(d=>{
+    const label=new Date(d+'T12:00:00').toLocaleDateString('tr-TR',{weekday:'long',day:'numeric',month:'long'});
+    return '<div class="month-day"><h3 style="margin:4px 0 8px">'+label+'</h3>'+programHTML(groups[d])+'</div>';
+  }).join('');
+}
 function render(){
-let d=today(),p=db.program.filter(x=>x.date==d).sort((a,b)=>a.time.localeCompare(b.time)),r=db.reminders.filter(x=>x.date==d),t=db.tasks.filter(x=>!x.done);
+let d=today(), sd=selectedProgramDate||d, p=db.program.filter(x=>x.date==sd).sort((a,b)=>(a.time||'99:99').localeCompare(b.time||'99:99')),r=db.reminders.filter(x=>x.date==sd),t=db.tasks.filter(x=>(x.due===sd)||(!x.due&&!x.done));
 document.getElementById('homeProgram').innerHTML=programHTML(p);
 document.getElementById('homeReminders').innerHTML=checkHTML('reminders',r,x=>x.time+' · '+x.date);
 document.getElementById('homeTasks').innerHTML=checkHTML('tasks',t,x=>'Sorumlu: '+(x.owner||'-')+' · Son tarih: '+(x.due||'-'));
-document.getElementById('programList').innerHTML=programHTML(db.program.slice().sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)));
+const gd=document.getElementById('globalDate'); if(gd) gd.value=selectedProgramDate||today(); document.getElementById('programList').innerHTML=programHTML(p);
 document.getElementById('noteList').innerHTML=checkHTML('notes',db.notes,x=>x.date);
 document.getElementById('reminderList').innerHTML=checkHTML('reminders',db.reminders.slice().sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)),x=>x.time+' · '+x.date);
-document.getElementById('taskList').innerHTML=checkHTML('tasks',db.tasks,x=>'Sorumlu: '+(x.owner||'-')+' · Son tarih: '+(x.due||'-'));
+document.getElementById('taskList').innerHTML=checkHTML('tasks',db.tasks.filter(x=>x.due===sd),x=>'Sorumlu: '+(x.owner||'-')+' · Son tarih: '+(x.due||'-'));
 }
+
 render();checkReminders();setInterval(checkReminders,30000);
 </script>
 </body></html>
